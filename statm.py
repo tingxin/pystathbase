@@ -29,7 +29,7 @@ def exe_check(host_source: str, table_name: str, begin_prefix: str, end_prefix: 
             counter += 1
             if counter > max_count:
                 break
-            if counter / 100 == 0:
+            if counter % 10000 == 0:
                 print(f"正在扫描 {counter} 行")
     except Exception as e:
         print(f'{begin_prefix} and {end_prefix} contain too much rows(> 100000)')
@@ -60,8 +60,14 @@ def compare(task_fix, table_name:str, result1: dict, result2: dict, begin_prefix
     with open(f'{os.getcwd()}/compare_{task_fix}.txt', 'a') as file:
         file.write(f'{table_name} 在集群1 在范围{begin_prefix} 和 {end_prefix} 扫描了: {l1}\n')
         file.write(f'{table_name} 在集群2 在范围{begin_prefix} 和 {end_prefix} 扫描了: {l2}\n')
-        for key, value in check.items():
-            file.write(f'{key}: {value}\n')
+        if len(check) > 0:
+            for key, value in check.items():
+                file.write(f'{key}: {value}\n')
+        else:
+            file.write(f'{table_name} 在集群2 在范围{begin_prefix} 和 {end_prefix} 数据验证全部正确\n')
+
+
+        file.write('\t\n')
 
 
 
@@ -105,7 +111,7 @@ def main():
     max_count = conf['max_count']
     tables = conf['tables']
 
-    current_time = datetime.now()
+    current_time = datetime.now()+timedelta(hour=8)
     # 将当前时间格式化为字符
     formatted_time = current_time.strftime("%Y-%m-%d_%H_%M_%S")
 
@@ -114,8 +120,6 @@ def main():
         table_name = table['name']
         begin_prefix = table['begin_prefix']
         end_prefix = table['end_prefix']
-
-        
 
         run(formatted_time, host_source, host_target, table_name, begin_prefix, end_prefix, max_count)
         
