@@ -1,0 +1,12 @@
+{
+    "max_count": 1000000,
+    "host_source": "hb-proxy-pub-p0w610gsuxu1b2x3z-master1-001.hbase.australia.rds.aliyuncs.com:2181",
+    "host_target": "hb-proxy-pub-p0w610gsuxu1b2x3z-master1-001.hbase.australia.rds.aliyuncs.com:2181",
+    "tables": [
+        {
+            "name": "DATA_POINT_SOURCE",
+            "begin_prefix": "AA1127744_1_1_1_20220301090500",
+            "end_prefix": "AA1127744_1_1_1_20230101090500"
+        }
+    ]
+}
