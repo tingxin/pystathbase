@@ -39,7 +39,7 @@ def split_big_range(begin_prefix: str, end_prefix: str)->list:
 
 
 def exe_check(host_source: str, table_name: str, b_prefix: str, e_prefix: str, cache: dict, max_count=1000000):
-    ca = cache
+    
     
     hour = 1000*60*60 
     host = host_source.split(':')
@@ -58,6 +58,7 @@ def exe_check(host_source: str, table_name: str, b_prefix: str, e_prefix: str, c
         # 构造扫描器，并应用过滤器
         try:
             print(f"begin scan table {table_name} in {begin_prefix} and {end_prefix}")
+            ca = dict()
             scanner = table.scan(row_start=begin_prefix,row_stop=end_prefix)
             counter = 0
             for key, data in scanner:
@@ -73,7 +74,8 @@ def exe_check(host_source: str, table_name: str, b_prefix: str, e_prefix: str, c
             print(e)
             print(f'{begin_prefix} and {end_prefix} contain too much rows(> {max_count})')
 
-        connection.close()
+        cache.update(ca)
+        del ca
 
 
 def compare(task_fix, table_name:str, result1: dict, result2: dict, begin_prefix, end_prefix):
