@@ -46,6 +46,7 @@ def exe_check(host_source: str, table_name: str, b_prefix: str, e_prefix: str, c
 
     range_fix = split_big_range(b_prefix, e_prefix)
     for index_fix in range(0, len(range_fix)-1):
+
         begin_prefix = range_fix[index_fix]
         end_prefix = range_fix[index_fix+1]
         # 分批的原因是服务端rpc只能连接1分钟，但是服务的目前还不能改
@@ -54,10 +55,10 @@ def exe_check(host_source: str, table_name: str, b_prefix: str, e_prefix: str, c
         table = connection.table(table_name)
 
 
-        scan_filter = f"RowFilter(>, 'binaryprefix:{begin_prefix}') AND RowFilter(<, 'binaryprefix:{end_prefix}')"
+        # scan_filter = f"RowFilter(>, 'binaryprefix:{begin_prefix}') AND RowFilter(<, 'binaryprefix:{end_prefix}')"
         # 构造扫描器，并应用过滤器
         try:
-            print(f"begin scan table {table_name} in {begin_prefix} and {end_prefix}")
+            print(f"{host_source} begin scan table {table_name} in {begin_prefix} and {end_prefix}")
             ca = dict()
             scanner = table.scan(row_start=begin_prefix,row_stop=end_prefix)
             counter = 0
@@ -77,59 +78,46 @@ def exe_check(host_source: str, table_name: str, b_prefix: str, e_prefix: str, c
         cache.update(ca)
         del ca
 
-
-def compare(task_fix, table_name:str, result1: dict, result2: dict, begin_prefix, end_prefix):
+def compare(task_fix,host_source, host_target, table_name:str, result1: dict, result2: dict, begin_prefix, end_prefix):
 
     l1 = len(result1)
     l2 = len(result2)
-    big_name = '集群1'
-    small_name = '集群2'
-    big = result1
-    small = result2
-    if l1 < l2:
-        big, small = result2, result1
-        big_name,small_name = small_name, big_name
 
-    bigset = set(big.keys())
-    smallset = set(small)
+    sourceset = set(result1.keys())
+    targetset = set(result2.keys())
 
-    notin_small_keys = bigset.difference(smallset)
-    notin_big_keys = smallset.difference(bigset)
-    intersation = bigset.intersection(smallset)
-    
-
-
+    notin_target_keys = sourceset.difference(targetset)
+    notin_source_keys = targetset.difference(sourceset)
+    intersation = sourceset.intersection(targetset)
 
     with open(f'{os.getcwd()}/compare_{task_fix}.txt', 'a') as file:
-        file.write(f'{table_name} 在集群1 在范围{begin_prefix} 和 {end_prefix} 扫描了: {l1}\n')
-        file.write(f'{table_name} 在集群2 在范围{begin_prefix} 和 {end_prefix} 扫描了: {l2}\n')
+        file.write(f'{table_name} 在 {host_source} 在范围{begin_prefix} 和 {end_prefix} 扫描了: {l1}\n')
+        file.write(f'{table_name} 在 {host_target} 在范围{begin_prefix} 和 {end_prefix} 扫描了: {l2}\n')
 
         is_true = True
         if l1 != l2:
             file.write('校验结果：集群数据不一致\n')
             is_true = False
 
-        if len(notin_small_keys) > 0:
+        if len(notin_target_keys) > 0:
             is_true = False
-            file.write(f'如下key 在{big_name} 但是不在 {small_name}:\n')
-            for key in notin_small_keys:
+            file.write(f'如下key 在{host_source} 但是不在 {host_target}:\n')
+            for key in notin_target_keys:
                 file.write(f'{key}\n')
             file.write('\n')
 
-        if len(notin_big_keys) > 0:
+        if len(notin_source_keys) > 0:
             is_true = False
-            file.write(f'如下key 在{small_name} 但是不在 {big_name}:\n')
-            for key in notin_big_keys:
+            file.write(f'如下key 在{host_target} 但是不在 {host_source}:\n')
+            for key in notin_source_keys:
                 file.write(f'{key}\n')
             file.write('\n')
 
         if len(intersation) > 0:
-            notmatch_count = 0
             notmatch_list = list()
-            for key in big:
-                if big[key] != small[key]:
-                    notmatch_count +=1
-                    notmatch_list.append(f'{key}:\n {big[key]}\n{small[key]}\n')
+            for key in intersation:
+                if result1[key] != result2[key]:
+                    notmatch_list.append(f'{key}:\n {result1[key]}\n{result2[key]}\n')
             
             if len(notmatch_list) > 0:
                 file.write(f'如下key 在两个集群都存在， 但是不一致,共计{len(notmatch_list)}:\n')
@@ -161,7 +149,7 @@ def run(task_fix, host_source, host_target, table_name, begin_prefix, end_prefix
     thread2.join()
 
     print(f"begin compare table {table_name} between {host_source} and {host_target} in {begin_prefix} and {end_prefix}")
-    compare(task_fix, table_name, cache1,cache2, begin_prefix, end_prefix)
+    compare(task_fix,host_source, host_target, table_name, cache1,cache2, begin_prefix, end_prefix)
     print(f"end compare table {table_name} between {host_source} and {host_target} in {begin_prefix} and {end_prefix}")
 
     del cache1
