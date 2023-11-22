@@ -10,34 +10,70 @@ import os
 import json
 
 
-def exe_check(host_source: str, table_name: str, begin_prefix: str, end_prefix: str, cache: dict, max_count=1000000):
+def split_big_range(begin_prefix: str, end_prefix: str)->list:
+    result = list()
+    result.append(begin_prefix)
+    begin_dt_index = begin_prefix.rfind('_')
+    if begin_dt_index < 0:
+        return [begin_prefix, end_prefix]
+    begin_dt_str = begin_prefix[begin_dt_index+1:begin_dt_index+9]
+
+    end_dt_index = end_prefix.rfind('_')
+    end_dt_str = end_prefix[end_dt_index+1:end_dt_index+9]
+
+    format_string = "%Y%m%d"
+    begin_date = datetime.strptime(begin_dt_str, format_string)
+    end_date = datetime.strptime(end_dt_str, format_string)
+
+    current_date = begin_date + timedelta(days=1)
+    while current_date < end_date:
+        current_str = current_date.strftime(format_string)
+        new_sp = begin_prefix.replace(begin_dt_str, current_str)
+        result.append(new_sp)
+        current_date = current_date+ timedelta(days=1)
+    result.append(end_prefix)
+
+    return result
+    
+    
+
+
+def exe_check(host_source: str, table_name: str, b_prefix: str, e_prefix: str, cache: dict, max_count=1000000):
+    ca = cache
+    
     hour = 1000*60*60 
     host = host_source.split(':')
-    connection = happybase.Connection(host[0], port=int(host[1]), timeout=hour)
-    connection.open()
 
-    table = connection.table(table_name)
-    ca = cache
+    range_fix = split_big_range(b_prefix, e_prefix)
+    for index_fix in range(0, len(range_fix)-1):
+        begin_prefix = range_fix[index_fix]
+        end_prefix = range_fix[index_fix+1]
+        # 分批的原因是服务端rpc只能连接1分钟，但是服务的目前还不能改
+        connection = happybase.Connection(host[0], port=int(host[1]), timeout=hour)
+        connection.open()
+        table = connection.table(table_name)
 
-    scan_filter = f"RowFilter(>, 'binaryprefix:{begin_prefix}') AND RowFilter(<, 'binaryprefix:{end_prefix}')"
-    # 构造扫描器，并应用过滤器
-    try:
-        scanner = table.scan(row_start=begin_prefix,row_stop=end_prefix)
-        counter = 0
-        for key, data in scanner:
-            ca[key] = data
-            counter += 1
-            if counter > max_count:
-                break
-            if counter % 10000 == 0:
-                print(f"正在扫描 {counter} 行")
 
-    except Exception as e:
-        ca.clear()
-        print(e)
-        print(f'{begin_prefix} and {end_prefix} contain too much rows(> {max_count})')
+        scan_filter = f"RowFilter(>, 'binaryprefix:{begin_prefix}') AND RowFilter(<, 'binaryprefix:{end_prefix}')"
+        # 构造扫描器，并应用过滤器
+        try:
+            print(f"begin scan table {table_name} in {begin_prefix} and {end_prefix}")
+            scanner = table.scan(row_start=begin_prefix,row_stop=end_prefix)
+            counter = 0
+            for key, data in scanner:
+                ca[key] = data
+                counter += 1
+                if counter > max_count:
+                    break
+                if counter % 10000 == 0:
+                    print(f"正在扫描 {counter} 行")
 
-    connection.close()
+        except Exception as e:
+            ca.clear()
+            print(e)
+            print(f'{begin_prefix} and {end_prefix} contain too much rows(> {max_count})')
+
+        connection.close()
 
 
 def compare(task_fix, table_name:str, result1: dict, result2: dict, begin_prefix, end_prefix):
