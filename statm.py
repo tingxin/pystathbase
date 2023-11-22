@@ -11,26 +11,30 @@ import json
 
 
 def split_big_range(begin_prefix: str, end_prefix: str)->list:
+    datelength=10
     result = list()
     result.append(begin_prefix)
     begin_dt_index = begin_prefix.rfind('_')
     if begin_dt_index < 0:
         return [begin_prefix, end_prefix]
-    begin_dt_str = begin_prefix[begin_dt_index+1:begin_dt_index+9]
+    begin_dt_str = begin_prefix[begin_dt_index+1:begin_dt_index+datelength+1]
 
     end_dt_index = end_prefix.rfind('_')
-    end_dt_str = end_prefix[end_dt_index+1:end_dt_index+9]
+    end_dt_str = end_prefix[end_dt_index+1:end_dt_index+datelength+1]
 
     format_string = "%Y%m%d"
+    format2_string = "%Y%m%d%H"
+    
     begin_date = datetime.strptime(begin_dt_str, format_string)
     end_date = datetime.strptime(end_dt_str, format_string)
 
-    current_date = begin_date + timedelta(days=1)
+    current_date = begin_date + timedelta(hours=1)
+    begin_f = begin_prefix[:begin_dt_index+1]
     while current_date < end_date:
-        current_str = current_date.strftime(format_string)
-        new_sp = begin_prefix.replace(begin_dt_str, current_str)
+        current_str = current_date.strftime(format2_string)
+        new_sp = begin_f + current_str
         result.append(new_sp)
-        current_date = current_date+ timedelta(days=1)
+        current_date = current_date+ timedelta(hours=1)
     result.append(end_prefix)
 
     return result
@@ -58,15 +62,13 @@ def exe_check(host_source: str, table_name: str, b_prefix: str, e_prefix: str, c
         # scan_filter = f"RowFilter(>, 'binaryprefix:{begin_prefix}') AND RowFilter(<, 'binaryprefix:{end_prefix}')"
         # 构造扫描器，并应用过滤器
         try:
-            print(f"{host_source} begin scan table {table_name} in {begin_prefix} and {end_prefix}")
+            print(f"{host_source} bescagin scan table {table_name} in {begin_prefix} and {end_prefix}")
             ca = dict()
-            scanner = table.scan(row_start=begin_prefix,row_stop=end_prefix)
+            scanner = table.scan(row_start=begin_prefix,row_stop=end_prefix,sorted_columns=True)
             counter = 0
             for key, data in scanner:
                 ca[key] = data
                 counter += 1
-                if counter > max_count:
-                    break
                 if counter % 10000 == 0:
                     print(f"正在扫描 {counter} 行")
 
@@ -77,6 +79,7 @@ def exe_check(host_source: str, table_name: str, b_prefix: str, e_prefix: str, c
 
         cache.update(ca)
         del ca
+        connection.close()
 
 def compare(task_fix,host_source, host_target, table_name:str, result1: dict, result2: dict, begin_prefix, end_prefix):
 
