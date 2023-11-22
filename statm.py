@@ -31,8 +31,11 @@ def exe_check(host_source: str, table_name: str, begin_prefix: str, end_prefix: 
                 break
             if counter % 10000 == 0:
                 print(f"正在扫描 {counter} 行")
+
     except Exception as e:
-        print(f'{begin_prefix} and {end_prefix} contain too much rows(> 100000)')
+        ca.clear()
+        print(e)
+        print(f'{begin_prefix} and {end_prefix} contain too much rows(> {max_count})')
 
     connection.close()
 
@@ -49,22 +52,54 @@ def compare(task_fix, table_name:str, result1: dict, result2: dict, begin_prefix
         big, small = result2, result1
         big_name,small_name = small_name, big_name
 
-    check = dict()
-    for key in big:
-        if key not in small:
-            check[key] = f"not in {small_name}"
-        else:
-            if big[key] != small[key]:
-                check[key] = f"{key} not match: \n{big[key]}\n{small[key]}"
+    bigset = set(big.keys())
+    smallset = set(small)
+
+    notin_small_keys = bigset.difference(smallset)
+    notin_big_keys = smallset.difference(bigset)
+    intersation = bigset.intersection(smallset)
+    
+
+
 
     with open(f'{os.getcwd()}/compare_{task_fix}.txt', 'a') as file:
         file.write(f'{table_name} 在集群1 在范围{begin_prefix} 和 {end_prefix} 扫描了: {l1}\n')
         file.write(f'{table_name} 在集群2 在范围{begin_prefix} 和 {end_prefix} 扫描了: {l2}\n')
-        if len(check) > 0:
-            for key, value in check.items():
-                file.write(f'{key}: {value}\n')
-        else:
-            file.write(f'{table_name} 在集群2 在范围{begin_prefix} 和 {end_prefix} 数据验证全部正确\n')
+
+        is_true = True
+        if l1 != l2:
+            file.write('校验结果：集群数据不一致\n')
+            is_true = False
+
+        if len(notin_small_keys) > 0:
+            is_true = False
+            file.write(f'如下key 在{big_name} 但是不在 {small_name}:\n')
+            for key in notin_small_keys:
+                file.write(f'{key}\n')
+            file.write('\n')
+
+        if len(notin_big_keys) > 0:
+            is_true = False
+            file.write(f'如下key 在{small_name} 但是不在 {big_name}:\n')
+            for key in notin_big_keys:
+                file.write(f'{key}\n')
+            file.write('\n')
+
+        if len(intersation) > 0:
+            notmatch_count = 0
+            notmatch_list = list()
+            for key in big:
+                if big[key] != small[key]:
+                    notmatch_count +=1
+                    notmatch_list.append(f'{key}:\n {big[key]}\n{small[key]}\n')
+            
+            if len(notmatch_list) > 0:
+                file.write(f'如下key 在两个集群都存在， 但是不一致,共计{len(notmatch_list)}:\n')
+                for item in notmatch_list:
+                    file.write(item)
+                    file.write('\n')
+        if is_true:
+            file.write(f'校验结果：{table_name} 在两个集群在范围{begin_prefix} 和 {end_prefix} 数据验证全部正确\n')
 
 
         file.write('\t\n')
@@ -111,7 +146,7 @@ def main():
     max_count = conf['max_count']
     tables = conf['tables']
 
-    current_time = datetime.now()+timedelta(hour=8)
+    current_time = datetime.now()+timedelta(hours=8)
     # 将当前时间格式化为字符
     formatted_time = current_time.strftime("%Y-%m-%d_%H_%M_%S")
 
