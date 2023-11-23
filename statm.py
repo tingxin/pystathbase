@@ -12,26 +12,26 @@ import json
 bach_count = 10000
 get_bach_count = 100
 
-def compare_get(result:dict, a:dict, b:dict):
+def compare_get(result:list, a:dict, b:dict):
     t = list()
     for row in b:
         rkey = row[0]
         data = row[1]
         if a[rkey] != data:
-            result[rkey] = f'{rkey}不一致:\n{a[rkey]}\n{data}\n'
+            result.append(f'{rkey}不一致:\n{a[rkey]}\n{data}\n')
         t.append(rkey)
     return t
 
 
-def exe_check(host_source: str, host_target:str, table_name: str, begin_prefix: str, end_prefix: str, result:dict,max_count=1000000):
+def exe_check(host_source: str, host_target:str, table_name: str, begin_prefix: str, end_prefix: str, result:list,max_count=1000000):
     start_time = time.time()
     hour = 1000 * 60 * 60
     host = host_source.split(':')
 
     # 分批的原因是服务端rpc只能连接1分钟，但是服务的目前还不能改
-    connection = happybase.Connection(host[0], port=int(host[1]), timeout=hour)
-    connection.open()
-    table = connection.table(table_name)
+    connection1 = happybase.Connection(host[0], port=int(host[1]), timeout=hour)
+    connection1.open()
+    table1 = connection1.table(table_name)
 
     # 构造扫描器，并应用过滤器
     cache = dict()
@@ -41,7 +41,7 @@ def exe_check(host_source: str, host_target:str, table_name: str, begin_prefix: 
 
         while True:
             print(f"{host_source} begin scan scan table {table_name} in {row_start} and {end_prefix}")
-            scanner = table.scan(row_start=row_start, row_stop=end_prefix, sorted_columns=True, limit=bach_count)
+            scanner = table1.scan(row_start=row_start, row_stop=end_prefix, sorted_columns=True, limit=bach_count)
             one_count = 0
             for key, data in scanner:
                 cache[key] = data
@@ -59,40 +59,42 @@ def exe_check(host_source: str, host_target:str, table_name: str, begin_prefix: 
     except Exception as e:
         print(e)
 
-    connection.close()
-
     host = host_target.split(':')
 
     # 分批的原因是服务端rpc只能连接1分钟，但是服务的目前还不能改
-    connection = happybase.Connection(host[0], port=int(host[1]), timeout=hour)
-    connection.open()
-    table = connection.table(table_name)
+    try:
+        connection2 = happybase.Connection(host[0], port=int(host[1]), timeout=hour)
+        connection2.open()
+        table2 = connection2.table(table_name)
 
-    request = list()
-    counter = 0
-    gen = cache.keys()
-    total_resp = list()
-    for key in gen:
-        request.append(key)
-        counter +=1
-        if counter == get_bach_count:
-            resp = table.rows(request)
+        request = list()
+        counter = 0
+        gen = cache.keys()
+        total_resp = list()
+        for key in gen:
+            request.append(key)
+            counter +=1
+            if counter == get_bach_count:
+                resp = table2.rows(request)
+                t = compare_get(result, cache, resp)
+                total_resp.extend(t)
+                request = list()
+
+        if len(request) > 0:
+            resp = table2.rows(request)
             t = compare_get(result, cache, resp)
             total_resp.extend(t)
-            request = list()
 
-    if len(request) > 0:
-        resp = table.rows(request)
-        t = compare_get(result, cache, resp)
-        total_resp.extend(t)
+        diff = set(cache.keys()).difference(set(total_resp))
+        for key in diff:
+            result.append(f'{key} 在集群{host_source} 但是不在{host_target}\n')
 
-    diff = set(cache.keys()).difference(set(total_resp))
-    for key in diff:
-        result[key] = f'{key} 在集群{host_source} 但是不在{host_target}\n'
+    except Exception as e:
+        print(e)
+
 
     end_time = time.time()
-
-        # 计算程序运行时间
+    # 计算程序运行时间
     elapsed_time = end_time - start_time
     print(f"校验表{table_name} 耗时 {elapsed_time:.2f} 秒")
 
@@ -114,7 +116,7 @@ def main():
     host_target = conf['host_target']
     max_count = conf['max_count']
     tables = conf['tables']
-
+    remedy= conf['remedy']
     current_time = datetime.now() + timedelta(hours=8)
     # 将当前时间格式化为字符
     formatted_time = current_time.strftime("%Y-%m-%d_%H_%M_%S")
@@ -126,7 +128,7 @@ def main():
         table_name = table['name']
         begin_prefix = table['begin_prefix']
         end_prefix = table['end_prefix']
-        result = dict()
+        result = list()
         th = threading.Thread(target=exe_check,
                                  args=(host_source, host_target, table_name, begin_prefix, end_prefix,result, max_count,))
         
@@ -146,10 +148,13 @@ def main():
             result = tup[1]
 
             if len(result) > 0:
-                file.write(f'{table_name} 在 {host_source} 在范围{begin_prefix} 和 {end_prefix}\n')
-                for key in result:
-                    file.write(result[key])
+                file.write(f'校验结果：{table_name} 在 {host_source} 在范围{begin_prefix} 和 {end_prefix}\n')
+                for item in result:
+                    file.write(item)
                 file.write('\n')
+            else:
+                file.write(f'校验结果：{table_name} 在 {host_source} 在范围{begin_prefix} 和 {end_prefix} 全部正确\n')
+
 
 
 
