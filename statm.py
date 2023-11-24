@@ -70,13 +70,14 @@ def exe_check(host_source: str, host_target: str, table_name: str, begin_prefix:
     hour = 1000 * 60 * 60
     host = host_source.split(':')
 
-    connection1 = happybase.Connection(host[0], port=int(host[1]), timeout=hour)
-    connection1.scanner_timeout = hour*2
-    table1 = connection1.table(table_name)
 
     # 构造扫描器，并应用过滤器
     cache = dict()
     try:
+        connection1 = happybase.Connection(host[0], port=int(host[1]), timeout=hour)
+        connection1.scanner_timeout = hour*2
+        table1 = connection1.table(table_name)
+
         print(f"{host_source} begin scan table {table_name} in {begin_prefix} and {end_prefix}")
         scanner = table1.scan(row_start=begin_prefix, row_stop=end_prefix, sorted_columns=True, limit=max_count)
         total_count = 0
@@ -87,7 +88,10 @@ def exe_check(host_source: str, host_target: str, table_name: str, begin_prefix:
                 print(f"正在扫描 {total_count} 行")
 
     except Exception as e:
-        print(e)
+        print(f"{host_source} end scan table {table_name} in {begin_prefix} and {end_prefix}")
+    finally:
+        connection1.close()
+        
 
     host = host_target.split(':')
 
@@ -124,7 +128,6 @@ def exe_check(host_source: str, host_target: str, table_name: str, begin_prefix:
 
     except Exception as e:
         print(e)
-        print("比对行数次数太多，请适当减少max_count")
 
     compare_and_fix(table_name, result,cache,resp_result,host_target)
 

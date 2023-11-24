@@ -2,16 +2,22 @@
     "max_count": 1000000,
     "host_source": "172.31.13.109:9090",
     "host_target": "172.31.12.101:9090",
+    "remedy":true,
     "tables": [
         {
             "name": "sales",
-            "begin_prefix": "0a85879b",
-            "end_prefix": "09ea5138"
+            "begin_prefix": "01f41001",
+            "end_prefix": "0259d608"
         },
         {
             "name": "sales",
-            "begin_prefix": "0a85879b",
-            "end_prefix": "09ea5138"
+            "begin_prefix": "00fe7daf",
+            "end_prefix": "01f5ca24-1d3e"
+        },
+        {
+            "name": "app",
+            "begin_prefix": "v1_20220311232",
+            "end_prefix": "v3_20220311232"
         }
     ]
 }
