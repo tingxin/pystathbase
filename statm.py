@@ -88,6 +88,7 @@ def exe_check(host_source: str, host_target: str, table_name: str, begin_prefix:
                 print(f"正在扫描 {total_count} 行")
 
     except Exception as e:
+        print(e)
         print(f"{host_source} end scan table {table_name} in {begin_prefix} and {end_prefix}")
     finally:
         connection1.close()
