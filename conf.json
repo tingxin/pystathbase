@@ -1,8 +1,7 @@
 {
-    "max_count": 1000000,
     "host_source": "172.31.13.109:9090",
     "host_target": "172.31.12.101:9090",
-    "remedy":true,
+    "remedy": true,
     "tables": [
         {
             "name": "sales",

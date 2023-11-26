@@ -8,7 +8,10 @@ import uuid
 from datetime import datetime, timedelta
 import os
 import json
+import hashlib
 
+max_count = 10000000000
+bach_count = 10000
 get_bach_count = 2000
 need_remedy = False
 
@@ -20,6 +23,7 @@ def compare_and_fix(tb_name:str, result:list, source:dict, target, host_target):
         key = row[0]
         data = row[1]
         keys.add(key)
+
         if source[key] != data:
             notmatch_source[key]= data
 
@@ -64,35 +68,41 @@ def compare_and_fix(tb_name:str, result:list, source:dict, target, host_target):
 
 
 
-def exe_check(host_source: str, host_target: str, table_name: str, begin_prefix: str, end_prefix: str, result: list,
-              max_count=1000000):
+def exe_check(host_source: str, host_target: str, table_name: str, begin_prefix: str, end_prefix: str, result: list):
     start_time = time.time()
     hour = 1000 * 60 * 60
     host = host_source.split(':')
 
-
     # 构造扫描器，并应用过滤器
     cache = dict()
     try:
+
         connection1 = happybase.Connection(host[0], port=int(host[1]), timeout=hour)
         connection1.scanner_timeout = hour*2
         table1 = connection1.table(table_name)
 
-        print(f"{host_source} begin scan table {table_name} in {begin_prefix} and {end_prefix}")
-        scanner = table1.scan(row_start=begin_prefix, row_stop=end_prefix, sorted_columns=True, limit=max_count)
         total_count = 0
-        for key, data in scanner:
-            cache[key] = data
-            total_count += 1
-            if total_count % 10000==0:
-                print(f"正在扫描 {total_count} 行")
+        row_start = begin_prefix
+        while True:
+            print(f"{host_source} begin scan scan table {table_name} in {row_start} and {end_prefix}")
+            scanner = table1.scan(row_start=row_start, row_stop=end_prefix, sorted_columns=True, limit=bach_count)
+            one_count = 0
+            for key, data in scanner:
+                cache[key] = data
+                one_count += 1
+                row_start = key
 
+            row_start = row_start + b'0'
+            total_count += one_count
+            print(f"正在扫描 {total_count} 行,新增 {one_count}")
+            if one_count <= 0:
+                break
     except Exception as e:
+        print('end scan')
         print(e)
-        print(f"{host_source} end scan table {table_name} in {begin_prefix} and {end_prefix}")
     finally:
+        print(f"{host_source} end scan table {table_name} in {begin_prefix} and {end_prefix}")
         connection1.close()
-        
 
     host = host_target.split(':')
 
@@ -154,7 +164,7 @@ def main():
 
     host_source = conf['host_source']
     host_target = conf['host_target']
-    max_count = conf['max_count']
+
     remedy = False
     if 'remedy' in conf:
         remedy = bool(conf['remedy'])
@@ -175,7 +185,7 @@ def main():
         end_prefix = table['end_prefix']
         result = list()
         th = threading.Thread(target=exe_check,
-                              args=(host_source, host_target, table_name, begin_prefix, end_prefix, result, max_count,))
+                              args=(host_source, host_target, table_name, begin_prefix, end_prefix, result,))
 
         result_list.append((table, result))
         t.append(th)
