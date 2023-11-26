@@ -10,26 +10,23 @@ import os
 import json
 import hashlib
 
-max_count = 10000000000
 bach_count = 10000
 get_bach_count = 2000
 need_remedy = False
+time_out_hour = 1000 * 60 * 60 * 10
 
-def compare_and_fix(tb_name:str, result:list, source:dict, target, host_target):
-    notmatch_source=dict()
+
+def compare_and_fix(tb_name: str, result: list, source: dict, target, host_target):
+    not_match_source = dict()
     keys = set()
-    
+
     for row in target:
         key = row[0]
         data = row[1]
         keys.add(key)
 
         if source[key] != data:
-            notmatch_source[key]= data
-
-    
-    print(len(source))
-    print(len(keys))
+            not_match_source[key] = data
 
     table = None
     connection = None
@@ -39,52 +36,84 @@ def compare_and_fix(tb_name:str, result:list, source:dict, target, host_target):
         connection = happybase.Connection(host[0], port=int(host[1]), timeout=hour)
         table = connection.table(tb_name)
 
-    result.append(f'{tb_name} 共从源扫描{len(source)}\n')
-    result.append(f'{tb_name} 共从目标扫描{len(keys)}\n')
-    if len(notmatch_source) > 0:
+    if len(not_match_source) > 0:
         result.append(f'{tb_name} 不一致数据：')
         if need_remedy:
-            result.append(f'共需修正 {len(notmatch_source)}条数据\n')
+            result.append(f'共需修正 {len(not_match_source)}条数据\n')
 
-        for key in notmatch_source:
-            result.append(f'{key} 不一致\n期望{source[key]}\n{notmatch_source[key]}\n')
+        for key in not_match_source:
+            result.append(f'{key} 不一致\n期望{source[key]}\n{not_match_source[key]}\n')
             if need_remedy:
                 print(f"正在修正 {tb_name} 数据 {key}")
-                t = table.put(key, source[key])
-            
-    notin_keys = set(source.keys()).difference(keys)
-    if len(notin_keys) > 0:
+                table.put(key, source[key])
+
+    not_in_keys = set(source.keys()).difference(keys)
+    if len(not_in_keys) > 0:
         result.append(f'{tb_name} 缺失数据：')
         if need_remedy:
-            result.append(f'共需补充 {len(notin_keys)}条数据\n')
-        for key in notin_keys:
+            result.append(f'共需补充 {len(not_in_keys)}条数据\n')
+        for key in not_in_keys:
             result.append(f'{key} 缺失\n')
             if need_remedy:
                 print(f"正在补充 {tb_name} 数据 {key}")
-                t = table.put(key, source[key])
+                table.put(key, source[key])
 
     if need_remedy:
         connection.close()
 
 
+def get_target_data(host_target: str, table_name, source_cache: dict):
+    host = host_target.split(':')
+    resp_result = list()
+    try:
+        connection2 = happybase.Connection(host[0], port=int(host[1]), timeout=time_out_hour)
+        table2 = connection2.table(table_name)
+
+        request = list()
+        gen = source_cache.keys()
+
+        counter = 0
+        bach_counter = 0
+
+        for key in gen:
+            request.append(key)
+            counter += 1
+            bach_counter += 1
+            if bach_counter == get_bach_count:
+                resp = table2.rows(request)
+                resp_result.extend(resp)
+                print(f"正在从{host_target} 扫描 并比较 {table_name} 第{counter} 行")
+                request = list()
+                bach_counter = 0
+
+        if len(request) > 0:
+            resp = table2.rows(request)
+            resp_result.extend(resp)
+
+        connection2.close()
+
+    except Exception as e:
+        print(e)
+    return  resp_result
+
 
 def exe_check(host_source: str, host_target: str, table_name: str, begin_prefix: str, end_prefix: str, result: list):
     start_time = time.time()
-    hour = 1000 * 60 * 60
     host = host_source.split(':')
 
     # 构造扫描器，并应用过滤器
-    cache = dict()
-    try:
 
-        connection1 = happybase.Connection(host[0], port=int(host[1]), timeout=hour)
-        connection1.scanner_timeout = hour*2
+    total_count = 0
+    total_target = 0
+    row_start = begin_prefix
+    while True:
+        cache = dict()
+        connection1 = happybase.Connection(host[0], port=int(host[1]), timeout=time_out_hour)
+        connection1.scanner_timeout = time_out_hour
         table1 = connection1.table(table_name)
+        print(f"{host_source} begin scan scan table {table_name} in {row_start} and {end_prefix}")
+        try:
 
-        total_count = 0
-        row_start = begin_prefix
-        while True:
-            print(f"{host_source} begin scan scan table {table_name} in {row_start} and {end_prefix}")
             scanner = table1.scan(row_start=row_start, row_stop=end_prefix, sorted_columns=True, limit=bach_count)
             one_count = 0
             for key, data in scanner:
@@ -97,56 +126,28 @@ def exe_check(host_source: str, host_target: str, table_name: str, begin_prefix:
             print(f"正在扫描 {total_count} 行,新增 {one_count}")
             if one_count <= 0:
                 break
-    except Exception as e:
-        print('end scan')
-        print(e)
-    finally:
-        print(f"{host_source} end scan table {table_name} in {begin_prefix} and {end_prefix}")
-        connection1.close()
+        except Exception as e:
+            print('end scan')
+            print(e)
+        finally:
+            print(f"{host_source} end scan table {table_name} in {begin_prefix} and {end_prefix}")
+            connection1.close()
 
-    host = host_target.split(':')
+        resp_result = get_target_data(host_target, table_name, cache)
+        total_target += len(resp_result)
+        compare_and_fix(table_name, result, cache, resp_result, host_target)
 
-    # 分批的原因是服务端rpc只能连接1分钟，但是服务的目前还不能改
-    resp_result = list()
-    try:
-        request = list()
-        counter = 0
-        bach_counter = 0
-        gen = cache.keys()
-        
-        for key in gen:
-            request.append(key)
-            counter += 1
-            bach_counter+=1
-            if bach_counter == get_bach_count:
-                # connection 超过服务的超时，但是客户端不知道，继续get数据可能造成socket问题
-                # 所以笨办法每次都重启一个链接
-                connection2 = happybase.Connection(host[0], port=int(host[1]), timeout=hour)
-                table2 = connection2.table(table_name)
-                resp = table2.rows(request)
-                resp_result.extend(resp)
-                connection2.close()
-                print(f"正在从{host_target} 扫描 并比较 {table_name} 第{counter} 行")
-                request = list()
-                bach_counter = 0
+        del cache
 
-        if len(request) > 0:
-            connection2 = happybase.Connection(host[0], port=int(host[1]), timeout=hour)
-            table2 = connection2.table(table_name)
-            resp = table2.rows(request)
-            resp_result.extend(resp)
-            connection2.close()
+    result.insert(0, f'{table_name} 共从目标扫描{total_target}\n')
+    result.insert(0, f'{table_name} 共从源扫描{total_count}\n')
 
-    except Exception as e:
-        print(e)
-
-    compare_and_fix(table_name, result,cache,resp_result,host_target)
 
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"校验表{table_name} 耗时 {elapsed_time:.2f} 秒")
-    del cache
-    resp_result = None
+
+
 
 
 def main():
@@ -200,20 +201,19 @@ def main():
             table_name = table['name'].strip('\t').strip('\n')
             begin_prefix = table['begin_prefix']
             end_prefix = table['end_prefix']
-            
+
             result = tup[1]
             file.write(f'分析报告：{table_name} 在 {host_source} 在范围{begin_prefix} 和 {end_prefix}\n')
             for item in result:
                 file.write(item)
-            if len(result) <=2:
+            if len(result) <= 2:
                 file.write('校验结果：全部正确\n')
-            
+
             file.write('\n')
-
-
 
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"全部任务耗时 {elapsed_time:.2f} 秒")
+
 
 main()
