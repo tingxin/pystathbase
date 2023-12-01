@@ -28,6 +28,8 @@ def compare_and_fix(tb_name: str, result: list, source: dict, target, host_targe
         if source[key] != data:
             not_match_source[key] = data
 
+    # print(list(keys)[0:20])
+
     table = None
     connection = None
     if need_remedy:
@@ -44,7 +46,7 @@ def compare_and_fix(tb_name: str, result: list, source: dict, target, host_targe
         for key in not_match_source:
             result.append(f'{key} 不一致\n期望{source[key]}\n{not_match_source[key]}\n')
             if need_remedy:
-                print(f"正在修正 {tb_name} 数据 {key}")
+                print(f"{datetime.now()}:正在修正 {tb_name} 数据 {key}")
                 table.put(key, source[key])
 
     not_in_keys = set(source.keys()).difference(keys)
@@ -55,7 +57,7 @@ def compare_and_fix(tb_name: str, result: list, source: dict, target, host_targe
         for key in not_in_keys:
             result.append(f'{key} 缺失\n')
             if need_remedy:
-                print(f"正在补充 {tb_name} 数据 {key}")
+                print(f"{datetime.now()}:正在补充 {tb_name} 数据 {key}")
                 table.put(key, source[key])
 
     if need_remedy:
@@ -80,9 +82,12 @@ def get_target_data(host_target: str, table_name, source_cache: dict):
             counter += 1
             bach_counter += 1
             if bach_counter == get_bach_count:
+                start_time = time.time()
                 resp = table2.rows(request)
                 resp_result.extend(resp)
-                print(f"正在从{host_target} 扫描 并比较 {table_name} 第{counter} 行")
+                end_time = time.time()
+                elapsed_time = end_time - start_time
+                print(f"{datetime.now()}:正在从{host_target} 扫描 并比较 {table_name} 第{counter} 行, 耗时 {elapsed_time:.2f} 秒")
                 request = list()
                 bach_counter = 0
 
@@ -111,7 +116,7 @@ def exe_check(host_source: str, host_target: str, table_name: str, begin_prefix:
         connection1 = happybase.Connection(host[0], port=int(host[1]), timeout=time_out_hour)
         connection1.scanner_timeout = time_out_hour
         table1 = connection1.table(table_name)
-        print(f"{host_source} begin scan scan table {table_name} in {row_start} and {end_prefix}")
+        print(f"{datetime.now()}:{host_source} begin scan scan table {table_name} in {row_start} and {end_prefix}")
         try:
 
             scanner = table1.scan(row_start=row_start, row_stop=end_prefix, sorted_columns=True, limit=bach_count)
@@ -119,18 +124,19 @@ def exe_check(host_source: str, host_target: str, table_name: str, begin_prefix:
             for key, data in scanner:
                 cache[key] = data
                 one_count += 1
-                row_start = key
+                row_start = key.decode('utf-8')
 
-            row_start = row_start + b'0'
+
+            row_start = row_start + '0'
             total_count += one_count
-            print(f"正在扫描 {total_count} 行,新增 {one_count}")
+            print(f"{datetime.now()}:正在扫描 {total_count} 行,新增 {one_count}")
             if one_count <= 0:
                 break
         except Exception as e:
             print('end scan')
             print(e)
         finally:
-            print(f"{host_source} end scan table {table_name} in {begin_prefix} and {end_prefix}")
+            print(f"{datetime.now()}:{host_source} end scan table {table_name} in {begin_prefix} and {end_prefix}")
             connection1.close()
 
         resp_result = get_target_data(host_target, table_name, cache)
@@ -138,6 +144,7 @@ def exe_check(host_source: str, host_target: str, table_name: str, begin_prefix:
         compare_and_fix(table_name, result, cache, resp_result, host_target)
 
         del cache
+        time.sleep(2)
 
     result.insert(0, f'{table_name} 共从目标扫描{total_target}\n')
     result.insert(0, f'{table_name} 共从源扫描{total_count}\n')
@@ -145,7 +152,7 @@ def exe_check(host_source: str, host_target: str, table_name: str, begin_prefix:
 
     end_time = time.time()
     elapsed_time = end_time - start_time
-    print(f"校验表{table_name} 耗时 {elapsed_time:.2f} 秒")
+    print(f"{datetime.now()}:校验表{table_name} 耗时 {elapsed_time:.2f} 秒")
 
 
 
@@ -172,6 +179,10 @@ def main():
     global need_remedy
     need_remedy = remedy
 
+    max_workers = 4
+    if 'max_workers' in conf:
+        max_workers = int(conf['max_workers'])
+
     tables = conf['tables']
     current_time = datetime.now() + timedelta(hours=8)
     # 将当前时间格式化为字符
@@ -191,6 +202,7 @@ def main():
         result_list.append((table, result))
         t.append(th)
         th.start()
+        time.sleep(2)
 
     for item in t:
         item.join()
