@@ -68,6 +68,8 @@ def get_target_data(host_target: str, table_name, source_cache: dict):
     print(f"{datetime.now()}:开始从{host_target} 扫描 并比较 {table_name}")
     host = host_target.split(':')
     resp_result = list()
+    if len(source_cache) <=0:
+        return resp_result
     try:
         connection2 = happybase.Connection(host[0], port=int(host[1]), timeout=time_out_hour)
         table2 = connection2.table(table_name)
