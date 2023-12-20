@@ -10,8 +10,8 @@ import os
 import json
 import hashlib
 
-bach_count = 10000
-get_bach_count = 2000
+bach_count = 5000
+get_bach_count = 1000
 need_remedy = False
 time_out_hour = 1000 * 60 * 60 * 10
 
