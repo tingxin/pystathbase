@@ -65,6 +65,7 @@ def compare_and_fix(tb_name: str, result: list, source: dict, target, host_targe
 
 
 def get_target_data(host_target: str, table_name, source_cache: dict):
+    print(f"{datetime.now()}:开始从{host_target} 扫描 并比较 {table_name}")
     host = host_target.split(':')
     resp_result = list()
     try:
@@ -98,7 +99,7 @@ def get_target_data(host_target: str, table_name, source_cache: dict):
         connection2.close()
 
     except Exception as e:
-        print(e)
+        print(f"get_target_data:\n{e}")
     return  resp_result
 
 
@@ -113,12 +114,11 @@ def exe_check(host_source: str, host_target: str, table_name: str, begin_prefix:
     row_start = begin_prefix
     while True:
         cache = dict()
-        connection1 = happybase.Connection(host[0], port=int(host[1]), timeout=time_out_hour)
-        connection1.scanner_timeout = time_out_hour
-        table1 = connection1.table(table_name)
-        print(f"{datetime.now()}:{host_source} begin scan scan table {table_name} in {row_start} and {end_prefix}")
         try:
-
+            connection1 = happybase.Connection(host[0], port=int(host[1]), timeout=time_out_hour)
+            connection1.scanner_timeout = time_out_hour
+            table1 = connection1.table(table_name)
+            print(f"{datetime.now()}:{host_source} begin scan scan table {table_name} in {row_start} and {end_prefix}")
             scanner = table1.scan(row_start=row_start, row_stop=end_prefix, sorted_columns=True, limit=bach_count)
             one_count = 0
             for key, data in scanner:
