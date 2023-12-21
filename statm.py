@@ -10,6 +10,7 @@ import os
 import json
 import hashlib
 
+max_count = 2*10*10*10000
 bach_count = 5000
 get_bach_count = 1000
 need_remedy = False
@@ -132,6 +133,7 @@ def exe_check(host_source: str, host_target: str, table_name: str, begin_prefix:
             row_start = row_start + '0'
             total_count += one_count
             print(f"{datetime.now()}:正在扫描 {total_count} 行,新增 {one_count}")
+
             if one_count <= 0:
                 break
         except Exception as e:
@@ -146,6 +148,9 @@ def exe_check(host_source: str, host_target: str, table_name: str, begin_prefix:
         compare_and_fix(table_name, result, cache, resp_result, host_target)
 
         del cache
+
+        if total_count > max_count:
+            break
         time.sleep(2)
 
     result.insert(0, f'{table_name} 共从目标扫描{total_target}\n')
